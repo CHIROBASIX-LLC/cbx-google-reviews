@@ -129,4 +129,48 @@
 			$status.html('<span style="color:#d63638;">Request failed.</span>');
 		});
 	});
+
+	// Bulk fetch via Outscraper.
+	$('#cbxr-bulk-fetch-btn').on('click', function () {
+		var $btn = $(this);
+		var $status = $('#cbxr-refresh-status');
+
+		var outscraper_key = $('#cbxr_outscraper_key').val().trim();
+		if (!outscraper_key) {
+			$status.html('<span style="color:#d63638;">Please enter your Outscraper API Key above and save settings first.</span>');
+			$('#cbxr_outscraper_key').focus();
+			return;
+		}
+
+		$btn.prop('disabled', true);
+		$('#cbxr-refresh-btn').prop('disabled', true);
+		$status.html('<span class="cbxr-spinner"></span> Fetching up to 200 reviews from Outscraper... This may take 30-60 seconds.');
+
+		$.post(cbxrAdmin.ajaxUrl, {
+			action: 'cbxr_bulk_fetch',
+			nonce: cbxrAdmin.nonce,
+			outscraper_key: outscraper_key
+		}, function (response) {
+			$btn.prop('disabled', false);
+			$('#cbxr-refresh-btn').prop('disabled', false);
+
+			if (!response.success) {
+				$status.html('<span style="color:#d63638;">Error: ' + response.data + '</span>');
+				return;
+			}
+
+			var d = response.data;
+			$status.html(
+				'<span style="color:#00a32a;">Done! Fetched ' + d.total_fetched + ' reviews. ' +
+				d.review_count + ' displayed (filtered). ' +
+				'Rating: ' + d.rating + ' (' + d.total_reviews + ' total on Google)</span>'
+			);
+
+			setTimeout(function () { location.reload(); }, 2500);
+		}).fail(function () {
+			$btn.prop('disabled', false);
+			$('#cbxr-refresh-btn').prop('disabled', false);
+			$status.html('<span style="color:#d63638;">Request failed or timed out. Try again.</span>');
+		});
+	});
 })(jQuery);

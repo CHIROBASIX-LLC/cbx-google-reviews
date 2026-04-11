@@ -10,7 +10,6 @@ class CBXR_API {
 		$place_id = get_option( 'cbxr_place_id', '' );
 
 		if ( empty( $api_key ) || empty( $place_id ) ) {
-			// Not an error during initial setup — just nothing to do yet.
 			return new WP_Error( 'cbxr_not_configured', '' );
 		}
 
@@ -41,12 +40,124 @@ class CBXR_API {
 	}
 
 	/**
-	 * Search for places using the Text Search API (much better results than findplacefromtext).
+	 * Fetch up to 200 reviews via Outscraper API.
 	 *
-	 * @param string $query   Search text.
-	 * @param string $api_key Optional API key (used before key is saved to DB).
-	 * @return array|WP_Error
+	 * @param string $outscraper_key  Outscraper API key.
+	 * @param int    $reviews_limit   Max reviews to fetch.
+	 * @return array|WP_Error  Array of normalized review objects or error.
 	 */
+	public function fetch_outscraper_reviews( $outscraper_key = '', $reviews_limit = 200 ) {
+		$place_id = get_option( 'cbxr_place_id', '' );
+
+		if ( empty( $outscraper_key ) ) {
+			$outscraper_key = get_option( 'cbxr_outscraper_key', '' );
+		}
+
+		if ( empty( $outscraper_key ) || empty( $place_id ) ) {
+			return new WP_Error( 'cbxr_outscraper_missing', 'Outscraper API key or Place ID not configured.' );
+		}
+
+		$url = add_query_arg(
+			array(
+				'query'        => $place_id,
+				'reviewsLimit' => $reviews_limit,
+				'sort'         => 'newest',
+				'ignoreEmpty'  => 'true',
+				'async'        => 'false',
+				'language'     => 'en',
+			),
+			'https://api.app.outscraper.com/maps/reviews-v3'
+		);
+
+		$response = wp_remote_get( $url, array(
+			'headers' => array(
+				'X-API-KEY' => $outscraper_key,
+			),
+			'timeout' => 120, // Outscraper can take a while for large fetches.
+		));
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		if ( 200 !== $code ) {
+			$error_msg = isset( $body['error_message'] ) ? $body['error_message'] : 'Outscraper API error (HTTP ' . $code . ')';
+			if ( isset( $body['detail'] ) ) {
+				$error_msg = $body['detail'];
+			}
+			return new WP_Error( 'cbxr_outscraper_error', $error_msg );
+		}
+
+		if ( empty( $body['data'] ) || empty( $body['data'][0] ) ) {
+			return new WP_Error( 'cbxr_outscraper_empty', 'No data returned from Outscraper.' );
+		}
+
+		$place_data = $body['data'][0];
+
+		// Update place-level info from Outscraper response.
+		if ( isset( $place_data['name'] ) ) {
+			update_option( 'cbxr_place_name', $place_data['name'] );
+		}
+		if ( isset( $place_data['rating'] ) ) {
+			update_option( 'cbxr_rating', $place_data['rating'] );
+		}
+		if ( isset( $place_data['reviews'] ) ) {
+			update_option( 'cbxr_review_count', $place_data['reviews'] );
+		}
+		if ( isset( $place_data['place_url'] ) ) {
+			update_option( 'cbxr_place_url', $place_data['place_url'] );
+		}
+
+		// Normalize Outscraper reviews to match the Google Places API format
+		// so the rest of the plugin (widget, caching, display) works unchanged.
+		$reviews_data = isset( $place_data['reviews_data'] ) ? $place_data['reviews_data'] : array();
+		$normalized   = array();
+
+		foreach ( $reviews_data as $r ) {
+			$normalized[] = array(
+				'author_name'               => $r['author_title'] ?? ( $r['author_name'] ?? 'Anonymous' ),
+				'author_url'                => $r['author_link'] ?? ( $r['author_url'] ?? '' ),
+				'profile_photo_url'         => $r['author_image'] ?? ( $r['profile_photo_url'] ?? '' ),
+				'rating'                    => $r['review_rating'] ?? ( $r['rating'] ?? 5 ),
+				'text'                      => $r['review_text'] ?? ( $r['text'] ?? '' ),
+				'time'                      => $r['review_timestamp'] ?? ( $r['time'] ?? 0 ),
+				'relative_time_description' => $r['review_datetime_utc'] ?? ( $r['relative_time_description'] ?? '' ),
+			);
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Bulk-load reviews from Outscraper and replace the cached reviews.
+	 *
+	 * @param string $outscraper_key  API key (optional, reads from options).
+	 * @param int    $reviews_limit   Max reviews.
+	 * @return int|WP_Error  Number of reviews cached, or error.
+	 */
+	public function bulk_fetch_reviews( $outscraper_key = '', $reviews_limit = 200 ) {
+		$reviews = $this->fetch_outscraper_reviews( $outscraper_key, $reviews_limit );
+
+		if ( is_wp_error( $reviews ) ) {
+			update_option( 'cbxr_last_error', $reviews->get_error_message() );
+			return $reviews;
+		}
+
+		// Sort by time descending.
+		usort( $reviews, function ( $a, $b ) {
+			return ( $b['time'] ?? 0 ) - ( $a['time'] ?? 0 );
+		});
+
+		update_option( 'cbxr_cached_reviews', $reviews, false );
+		update_option( 'cbxr_last_refresh', current_time( 'mysql' ) );
+		delete_option( 'cbxr_last_error' );
+
+		return count( $reviews );
+	}
+
 	public function search_places( $query, $api_key = '' ) {
 		if ( empty( $api_key ) ) {
 			$api_key = get_option( 'cbxr_api_key', '' );
@@ -81,7 +192,6 @@ class CBXR_API {
 			return array();
 		}
 
-		// Normalize results to a consistent format.
 		$places = array();
 		foreach ( $body['results'] as $r ) {
 			$places[] = array(
@@ -99,14 +209,12 @@ class CBXR_API {
 	}
 
 	/**
-	 * Refresh reviews: fetch from API and merge with existing cached reviews.
-	 * Silently skips if not yet configured (no error stored).
+	 * Refresh reviews via Google Places API (5 at a time, merges with cache).
 	 */
 	public function refresh_reviews() {
 		$result = $this->fetch_reviews();
 
 		if ( is_wp_error( $result ) ) {
-			// Don't store an error for "not configured" — that's expected during setup.
 			if ( 'cbxr_not_configured' !== $result->get_error_code() ) {
 				update_option( 'cbxr_last_error', $result->get_error_message() );
 			}

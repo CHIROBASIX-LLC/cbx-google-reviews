@@ -20,6 +20,7 @@ class CBXR_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
 		add_action( 'wp_ajax_cbxr_search_places', array( $this, 'ajax_search_places' ) );
 		add_action( 'wp_ajax_cbxr_refresh_reviews', array( $this, 'ajax_refresh_reviews' ) );
+		add_action( 'wp_ajax_cbxr_bulk_fetch', array( $this, 'ajax_bulk_fetch' ) );
 
 		// Clear stale errors when settings are saved.
 		add_action( 'update_option_cbxr_api_key', array( $this, 'on_settings_saved' ) );
@@ -53,6 +54,7 @@ class CBXR_Admin {
 
 	public function register_settings() {
 		register_setting( 'cbxr_settings', 'cbxr_api_key', array( 'sanitize_callback' => 'sanitize_text_field' ) );
+		register_setting( 'cbxr_settings', 'cbxr_outscraper_key', array( 'sanitize_callback' => 'sanitize_text_field' ) );
 		register_setting( 'cbxr_settings', 'cbxr_place_id', array( 'sanitize_callback' => 'sanitize_text_field' ) );
 		register_setting( 'cbxr_settings', 'cbxr_min_rating', array(
 			'sanitize_callback' => 'absint',
@@ -138,10 +140,39 @@ class CBXR_Admin {
 		));
 	}
 
+	public function ajax_bulk_fetch() {
+		check_ajax_referer( 'cbxr_admin_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( 'Unauthorized' );
+		}
+
+		$outscraper_key = isset( $_POST['outscraper_key'] ) ? sanitize_text_field( wp_unslash( $_POST['outscraper_key'] ) ) : '';
+
+		$api    = new CBXR_API();
+		$result = $api->bulk_fetch_reviews( $outscraper_key, 200 );
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( $result->get_error_message() );
+		}
+
+		$reviews = $api->get_display_reviews();
+		wp_send_json_success( array(
+			'total_fetched'  => $result,
+			'review_count'   => count( $reviews ),
+			'total_cached'   => count( get_option( 'cbxr_cached_reviews', array() ) ),
+			'rating'         => get_option( 'cbxr_rating', '' ),
+			'total_reviews'  => get_option( 'cbxr_review_count', '' ),
+			'place_name'     => get_option( 'cbxr_place_name', '' ),
+			'last_refresh'   => get_option( 'cbxr_last_refresh', '' ),
+		));
+	}
+
 	public function render_settings_page() {
-		$api_key      = get_option( 'cbxr_api_key', '' );
-		$place_id     = get_option( 'cbxr_place_id', '' );
-		$place_name   = get_option( 'cbxr_place_name', '' );
+		$api_key        = get_option( 'cbxr_api_key', '' );
+		$outscraper_key = get_option( 'cbxr_outscraper_key', '' );
+		$place_id       = get_option( 'cbxr_place_id', '' );
+		$place_name     = get_option( 'cbxr_place_name', '' );
 		$rating       = get_option( 'cbxr_rating', '' );
 		$review_count = get_option( 'cbxr_review_count', '' );
 		$last_refresh = get_option( 'cbxr_last_refresh', '' );
@@ -177,7 +208,8 @@ class CBXR_Admin {
 					<?php if ( $last_refresh ) : ?>
 						<p class="cbxr-meta">Last refreshed: <?php echo esc_html( $last_refresh ); ?></p>
 					<?php endif; ?>
-					<button type="button" class="button" id="cbxr-refresh-btn">Refresh Reviews Now</button>
+					<button type="button" class="button" id="cbxr-refresh-btn">Refresh (5 newest)</button>
+					<button type="button" class="button button-primary" id="cbxr-bulk-fetch-btn">Fetch All Reviews (up to 200)</button>
 					<span id="cbxr-refresh-status"></span>
 				</div>
 			<?php endif; ?>
@@ -185,7 +217,7 @@ class CBXR_Admin {
 			<form method="post" action="options.php">
 				<?php settings_fields( 'cbxr_settings' ); ?>
 
-				<h2 class="cbxr-section-title">1. Connect to Google</h2>
+				<h2 class="cbxr-section-title">1. Connect APIs</h2>
 				<table class="form-table">
 					<tr>
 						<th scope="row"><label for="cbxr_api_key">Google API Key</label></th>
@@ -195,6 +227,18 @@ class CBXR_Admin {
 							<p class="description">
 								Requires Places API enabled.
 								<a href="https://console.cloud.google.com/apis/library/places-backend.googleapis.com" target="_blank" rel="noopener">Enable it here</a>.
+							</p>
+						</td>
+					</tr>
+
+					<tr>
+						<th scope="row"><label for="cbxr_outscraper_key">Outscraper API Key</label></th>
+						<td>
+							<input type="password" id="cbxr_outscraper_key" name="cbxr_outscraper_key"
+								value="<?php echo esc_attr( $outscraper_key ); ?>" class="regular-text" autocomplete="off" />
+							<p class="description">
+								Fetches up to 200 reviews per location. First 500 reviews free.
+								<a href="https://outscraper.com/" target="_blank" rel="noopener">Get a key here</a>.
 							</p>
 						</td>
 					</tr>
