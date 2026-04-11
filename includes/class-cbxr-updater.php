@@ -69,7 +69,16 @@ class CBXR_Updater {
 		}
 
 		$this->github_response = $body;
-		set_transient( $cache_key, $body, 6 * HOUR_IN_SECONDS );
+
+		// Only cache if there's actually a newer version available.
+		// If the remote version matches what's installed, use a short cache (1 hour)
+		// so new releases are discovered quickly.
+		$remote_version = ltrim( $body['tag_name'], 'vV' );
+		$cache_ttl = version_compare( $remote_version, $this->current_version, '>' )
+			? 6 * HOUR_IN_SECONDS
+			: 1 * HOUR_IN_SECONDS;
+
+		set_transient( $cache_key, $body, $cache_ttl );
 
 		return $body;
 	}
