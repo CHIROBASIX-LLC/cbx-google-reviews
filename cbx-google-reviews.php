@@ -3,7 +3,7 @@
  * Plugin Name: CHIROBASIX Google Reviews Widget
  * Plugin URI:  https://chirobasix.com
  * Description: Displays Google Reviews as a floating widget with slide-out panel. Self-hosted Elfsight replacement.
- * Version:     1.5.0
+ * Version:     1.5.1
  * Author:      CHIROBASIX
  * Author URI:  https://chirobasix.com
  * License:     GPL-2.0+
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CBXR_VERSION', '1.5.0' );
+define( 'CBXR_VERSION', '1.5.1' );
 define( 'CBXR_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CBXR_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -31,7 +31,7 @@ function cbxr_init() {
 	CBXR_Widget::instance();
 
 	// GitHub auto-updater: checks for new releases and enables one-click updates.
-	new CBXR_Updater( __FILE__, 'CHIROBASIX-LLC', 'cbx-google-reviews' );
+	new CBXR_Updater( __FILE__, 'CHIROBASIX-LLC', 'cbx-plugin-google-reviews' );
 }
 add_action( 'plugins_loaded', 'cbxr_init' );
 
