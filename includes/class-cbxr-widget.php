@@ -63,6 +63,14 @@ class CBXR_Widget {
 
 		$is_right = ( 'bottom-right' === $position );
 		$pos_class = $is_right ? 'cbxr-pos-right' : 'cbxr-pos-left';
+
+		// Critical positioning as inline STYLE ATTRIBUTES on the elements. WP Rocket "Remove Unused CSS"
+		// strips the external sheet AND empties inline <style> blocks, which dumped the panel un-hidden
+		// below the footer. Style attributes survive every CSS optimizer, so the panel/overlay can never
+		// dump. No !important — the stylesheet's `.cbxr-open` rules (which use !important) still win on open.
+		$badge_style   = 'position:fixed;bottom:20px;z-index:999998;' . ( $is_right ? 'right:20px;' : 'left:20px;' );
+		$panel_style   = 'position:fixed;top:0;bottom:0;width:340px;max-width:92vw;z-index:999999;transition:transform .35s cubic-bezier(.4,0,.2,1);' . ( $is_right ? 'right:0;left:auto;transform:translateX(101%);' : 'left:0;transform:translateX(-101%);' );
+		$overlay_style = 'position:fixed;inset:0;z-index:999997;opacity:0;pointer-events:none;transition:opacity .35s;';
 		?>
 		<style id="cbxr-critical-css">
 		/* Critical positioning, inlined so it applies at first paint even when the main stylesheet is
@@ -81,14 +89,14 @@ class CBXR_Widget {
 		<div id="cbxr-widget" class="<?php echo esc_attr( $pos_class ); ?>" style="--cbxr-accent: <?php echo esc_attr( $accent_color ); ?>;">
 
 			<!-- Floating Badge -->
-			<button id="cbxr-badge" class="cbxr-badge" aria-label="Open Google Reviews">
+			<button id="cbxr-badge" class="cbxr-badge" style="<?php echo esc_attr( $badge_style ); ?>" aria-label="Open Google Reviews">
 				<span class="cbxr-badge-rating"><?php echo esc_html( number_format( (float) $rating, 1 ) ); ?></span>
 				<span class="cbxr-badge-stars"><?php echo $this->render_stars( (float) $rating, 22 ); ?></span>
 				<span class="cbxr-badge-count"><?php echo esc_html( $count ); ?> reviews</span>
 			</button>
 
 			<!-- Slide-out Panel -->
-			<div id="cbxr-panel" class="cbxr-panel" aria-hidden="true">
+			<div id="cbxr-panel" class="cbxr-panel" style="<?php echo esc_attr( $panel_style ); ?>" aria-hidden="true">
 				<div class="cbxr-panel-inner">
 
 					<button id="cbxr-close" class="cbxr-close" aria-label="Close reviews panel">&times;</button>
@@ -127,7 +135,7 @@ class CBXR_Widget {
 				</div>
 			</div>
 
-			<div id="cbxr-overlay" class="cbxr-overlay"></div>
+			<div id="cbxr-overlay" class="cbxr-overlay" style="<?php echo esc_attr( $overlay_style ); ?>"></div>
 		</div>
 		<?php
 		$this->render_schema( $name, $rating, $count, $url, $place_id, $reviews );

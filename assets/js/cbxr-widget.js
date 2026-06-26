@@ -12,16 +12,25 @@
 
 	if (!widget || !badge || !panel) return;
 
+	// The widget is positioned/hidden via inline style attributes (see render()), so it survives
+	// WP Rocket "Remove Unused CSS" — which strips the stylesheet's `.cbxr-open` rule and would
+	// otherwise leave the panel stuck off-canvas. Drive open/close through those same inline styles.
+	var hiddenTransform = widget.classList.contains('cbxr-pos-right') ? 'translateX(101%)' : 'translateX(-101%)';
+
 	function openPanel() {
 		widget.classList.add('cbxr-open');
 		panel.setAttribute('aria-hidden', 'false');
 		document.body.style.overflow = 'hidden';
+		panel.style.transform = 'translateX(0)';
+		if (overlay) { overlay.style.opacity = '1'; overlay.style.pointerEvents = 'auto'; }
 	}
 
 	function closePanel() {
 		widget.classList.remove('cbxr-open');
 		panel.setAttribute('aria-hidden', 'true');
 		document.body.style.overflow = '';
+		panel.style.transform = hiddenTransform;
+		if (overlay) { overlay.style.opacity = '0'; overlay.style.pointerEvents = 'none'; }
 	}
 
 	badge.addEventListener('click', openPanel);

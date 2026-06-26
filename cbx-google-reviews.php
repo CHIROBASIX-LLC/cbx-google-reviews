@@ -3,7 +3,7 @@
  * Plugin Name: CHIROBASIX Google Reviews Widget
  * Plugin URI:  https://chirobasix.com
  * Description: Displays Google Reviews as a floating widget with slide-out panel. Self-hosted Elfsight replacement.
- * Version:     1.5.3
+ * Version:     1.5.4
  * Author:      CHIROBASIX
  * Author URI:  https://chirobasix.com
  * License:     GPL-2.0+
@@ -14,9 +14,39 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CBXR_VERSION', '1.5.3' );
+define( 'CBXR_VERSION', '1.5.4' );
 define( 'CBXR_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CBXR_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+
+/**
+ * WP Rocket compatibility. The widget is positioned/hidden via inline style attributes + JS (see
+ * class-cbxr-widget.php), so it never dumps below the footer even when WP Rocket strips its CSS.
+ * These filters additionally keep it fully STYLED and FUNCTIONAL under "Optimize CSS Delivery"
+ * (Remove Unused CSS) and "Delay JavaScript":
+ *   1. Keep the widget stylesheet out of Remove Unused CSS so it loads normally → panel stays styled.
+ *      (RUCSS otherwise deems the hidden slide-panel CSS "unused" and strips it.)
+ *   2. Safelist the widget selectors as a fallback for setups that process rather than exclude it.
+ *   3. Keep the widget script out of Delay JS so the open/close handlers always attach.
+ */
+add_filter( 'rocket_rucss_external_exclusions', function ( $exclusions ) {
+	$exclusions   = (array) $exclusions;
+	$exclusions[] = 'cbx-google-reviews/assets/css/cbxr-widget.css';
+	return $exclusions;
+} );
+add_filter( 'rocket_rucss_safelist', function ( $safelist ) {
+	$safelist = (array) $safelist;
+	foreach ( array( '#cbxr-widget', '.cbxr-badge', '.cbxr-panel', '.cbxr-overlay', '.cbxr-open' ) as $sel ) {
+		if ( ! in_array( $sel, $safelist, true ) ) {
+			$safelist[] = $sel;
+		}
+	}
+	return $safelist;
+} );
+add_filter( 'rocket_delay_js_exclusions', function ( $exclusions ) {
+	$exclusions   = (array) $exclusions;
+	$exclusions[] = 'cbx-google-reviews/assets/js/cbxr-widget.js';
+	return $exclusions;
+} );
 
 /**
  * Read an API key, preferring a wp-config.php constant over the stored option.
